@@ -1,26 +1,174 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Mapped from shadcn variables */
+  --color-background:              var(--background);
+  --color-foreground:              var(--foreground);
+  --color-card:                    var(--card);
+  --color-card-foreground:         var(--card-foreground);
+  --color-popover:                 var(--popover);
+  --color-popover-foreground:      var(--popover-foreground);
+  --color-primary:                 var(--primary);
+  --color-primary-foreground:      var(--primary-foreground);
+  --color-secondary:               var(--secondary);
+  --color-secondary-foreground:    var(--secondary-foreground);
+  --color-muted:                   var(--muted);
+  --color-muted-foreground:        var(--muted-foreground);
+  --color-accent:                  var(--accent);
+  --color-accent-foreground:       var(--accent-foreground);
+  --color-destructive:             var(--destructive);
+  --color-border:                  var(--border);
+  --color-input:                   var(--input);
+  --color-ring:                    var(--ring);
+  --color-chart-1:                 var(--chart-1);
+  --color-chart-2:                 var(--chart-2);
+  --color-chart-3:                 var(--chart-3);
+  --color-chart-4:                 var(--chart-4);
+  --color-chart-5:                 var(--chart-5);
+  --color-sidebar:                 var(--sidebar);
+  --color-sidebar-foreground:      var(--sidebar-foreground);
+  --color-sidebar-primary:         var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent:          var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border:          var(--sidebar-border);
+  --color-sidebar-ring:            var(--sidebar-ring);
+
+  /* Design-system explicit tokens */
+  --color-ink:       #0A0A0A;
+  --color-paper:     #FFFFFF;
+  --color-mist:      #F4F4F5;
+  --color-hairline:  #E4E4E7;
+  --color-slate:     #52525B;
+  --color-red:       #E11D2E;
+  --color-red-soft:  #FEF2F3;
+  --color-faint:     #A1A1AA;
+
+  /* Fonts */
+  --font-sans:  var(--font-inter);
+  --font-serif: var(--font-instrument-serif);
+  --font-mono:  var(--font-jetbrains-mono);
+
+  /* Radii tokens */
+  --radius-xs:     4px;
+  --radius-sm:     6px;
+  --radius-md:     10px;
+  --radius-lg:     14px;
+  --radius-pill:   999px;
+  --radius-circle: 50%;
+  --radius-sm:     calc(var(--radius) * 0.6);
+  --radius-md:     calc(var(--radius) * 0.8);
+  --radius-lg:     var(--radius);
+  --radius-xl:     calc(var(--radius) * 1.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ─── Paper-first design system (always light) ─────────────────────────── */
+:root {
+  --background:              #FFFFFF;     /* paper */
+  --foreground:              #0A0A0A;     /* ink */
+  --card:                    #FFFFFF;
+  --card-foreground:         #0A0A0A;
+  --popover:                 #FFFFFF;
+  --popover-foreground:      #0A0A0A;
+  --primary:                 #E11D2E;     /* TED red */
+  --primary-foreground:      #FFFFFF;
+  --secondary:               #F4F4F5;     /* mist */
+  --secondary-foreground:    #0A0A0A;
+  --muted:                   #F4F4F5;
+  --muted-foreground:        #71717A;     /* muted text */
+  --accent:                  #F4F4F5;
+  --accent-foreground:       #0A0A0A;
+  --destructive:             #E11D2E;
+  --border:                  #E4E4E7;     /* hairline */
+  --input:                   #F4F4F5;
+  --ring:                    #E11D2E;
+  --chart-1:                 #E11D2E;
+  --chart-2:                 oklch(0.72 0.12 160);
+  --chart-3:                 oklch(0.72 0.12 260);
+  --chart-4:                 oklch(0.75 0.15 80);
+  --chart-5:                 oklch(0.65 0.15 300);
+  --radius:                  0.5rem;
+  --sidebar:                 #FFFFFF;
+  --sidebar-foreground:      #0A0A0A;
+  --sidebar-primary:         #E11D2E;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent:          #F4F4F5;
+  --sidebar-accent-foreground: #0A0A0A;
+  --sidebar-border:          #E4E4E7;
+  --sidebar-ring:            #E11D2E;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-inter), -apple-system, system-ui, sans-serif;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Tabular numerals for counts */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Status badge colours (light-theme) */
+  .status-active {
+    background-color: #DCFCE7;
+    color: #166534;
+  }
+  .status-pending {
+    background-color: #FEF3C7;
+    color: #92400E;
+  }
+  .status-blocked {
+    background-color: #FEF2F3;
+    color: #E11D2E;
+  }
+
+  /* Role badge — 9px mono, uppercase */
+  .role-badge {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  .role-speaker   { background: #FEF2F3; color: #E11D2E; }
+  .role-organizer { background: #F4F4F5; color: #0A0A0A; }
+  .role-attendee  { background: #F4F4F5; color: #52525B; }
+
+  /* Mono kicker — 10px uppercase label */
+  .kicker {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #A1A1AA;
+    line-height: 1;
+  }
+
+  /* Red rule above section headers */
+  .rule-red {
+    display: block;
+    width: 20px;
+    height: 2px;
+    background-color: #E11D2E;
+    margin-bottom: 8px;
+  }
+
+  /* FAB elevation */
+  .shadow-fab {
+    box-shadow: 0 8px 20px rgba(225, 29, 46, 0.35), 0 2px 4px rgba(0,0,0,0.10);
+  }
 }
