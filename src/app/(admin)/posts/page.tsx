@@ -31,6 +31,15 @@ function avatarColor(name: string) {
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
 }
 
+function extractYoutubeId(url: string): string | null {
+  const match =
+    url.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/) ||
+    url.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/) ||
+    url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/) ||
+    url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
+
 const POST_TYPE_META: Record<PostType, { label: string; icon: React.ReactNode; accent: string }> = {
   text: { label: "Text", icon: <Type className="h-3.5 w-3.5" />, accent: "bg-red" },
   image: { label: "Image", icon: <ImageIcon className="h-3.5 w-3.5" />, accent: "bg-blue-500" },
@@ -137,14 +146,31 @@ function PostCard({ post, onEdit, onDelete }: { post: PostAPI; onEdit: (p: PostA
         )}
 
         {/* Video preview */}
-        {post.post_type === "video" && post.video_url && (
-          <div className="flex items-center gap-2.5 rounded-[8px] bg-mist border border-hairline px-3 py-2.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-100">
-              <Video className="h-3.5 w-3.5 text-purple-500 stroke-[1.6]" />
+        {post.post_type === "video" && post.video_url && (() => {
+          const ytId = extractYoutubeId(post.video_url);
+          if (ytId) {
+            return (
+              <div className="relative aspect-video w-full rounded-[8px] overflow-hidden bg-black border border-hairline">
+                <iframe
+                  src={`https://www.youtube.com/embed/${ytId}`}
+                  title="YouTube video player"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="absolute inset-0 w-full h-full"
+                />
+              </div>
+            );
+          }
+          return (
+            <div className="flex items-center gap-2.5 rounded-[8px] bg-mist border border-hairline px-3 py-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-100">
+                <Video className="h-3.5 w-3.5 text-purple-500 stroke-[1.6]" />
+              </div>
+              <span className="text-[12px] text-slate truncate flex-1">{post.video_url}</span>
             </div>
-            <span className="text-[12px] text-slate truncate flex-1">{post.video_url}</span>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Poll preview */}
         {post.post_type === "poll" && post.poll_options && post.poll_options.length > 0 && (

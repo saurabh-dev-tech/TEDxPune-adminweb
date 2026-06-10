@@ -7,7 +7,7 @@ import type {
   YouTubePlaylist, YouTubeVideo,
 } from "@/types";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
 let authToken: string | null = null;
 let onUnauthorized: (() => void) | null = null;

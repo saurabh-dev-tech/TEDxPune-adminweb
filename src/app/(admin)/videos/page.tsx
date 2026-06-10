@@ -41,6 +41,13 @@ function PlaylistThumbnail({ src, name }: { src: string | null; name: string }) 
   );
 }
 
+function truncateWords(str: string, maxWords: number) {
+  if (!str) return "";
+  const words = str.trim().split(/\s+/);
+  if (words.length <= maxWords) return str;
+  return words.slice(0, maxWords).join(" ") + "…";
+}
+
 function VideoThumbnail({ src, title }: { src: string | null; title: string }) {
   if (src) {
     return (
@@ -400,7 +407,7 @@ function VideosView({
             <TableHeader>
               <TableRow className="border-hairline hover:bg-transparent">
                 <TableHead className="kicker text-faint py-3 w-[140px]">Thumbnail</TableHead>
-                <TableHead className="kicker text-faint py-3">Title</TableHead>
+                <TableHead className="kicker text-faint py-3 max-w-[320px]">Title</TableHead>
                 <TableHead className="kicker text-faint py-3 hidden md:table-cell w-[90px]">Duration</TableHead>
                 <TableHead className="kicker text-faint py-3 hidden sm:table-cell w-[120px]">Published</TableHead>
                 <TableHead className="kicker text-faint py-3 w-[60px] text-right">Link</TableHead>
@@ -415,10 +422,14 @@ function VideosView({
                   </TableCell>
 
                   {/* Title */}
-                  <TableCell className="py-3">
-                    <p className="text-[13px] font-semibold text-ink leading-tight line-clamp-2">{v.title}</p>
+                  <TableCell className="py-3 max-w-[320px]">
+                    <p className="text-[13px] font-semibold text-ink leading-tight line-clamp-2" title={v.title}>
+                      {truncateWords(v.title, 12)}
+                    </p>
                     {v.description && (
-                      <p className="text-[11px] text-slate mt-0.5 line-clamp-1">{v.description}</p>
+                      <p className="text-[11px] text-slate mt-0.5 line-clamp-1" title={v.description}>
+                        {truncateWords(v.description, 18)}
+                      </p>
                     )}
                   </TableCell>
 
@@ -617,7 +628,7 @@ export default function VideosPage() {
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0 flex-1">
           {view === "videos" && (
             <button
               onClick={handleBack}
@@ -630,8 +641,9 @@ export default function VideosPage() {
           <span className="rule-red" />
           <p className="kicker text-faint mb-1.5">04 / videos</p>
           <h1
-            className="text-[28px] leading-[1.0] tracking-[-0.6px] text-ink"
+            className="text-[28px] leading-[1.1] tracking-[-0.6px] text-ink truncate"
             style={{ fontFamily: "var(--font-instrument-serif), Georgia, serif" }}
+            title={view === "videos" && selectedPlaylist ? selectedPlaylist.playlist_name : "Video Management"}
           >
             {view === "videos" && selectedPlaylist
               ? selectedPlaylist.playlist_name
