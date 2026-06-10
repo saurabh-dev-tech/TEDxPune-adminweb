@@ -22,6 +22,7 @@ interface AuthContextValue {
   authUser: AuthUser | null;
   token: string | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
   login: (accessToken: string, loginUser: LoginUser) => { ok: boolean; error?: string };
   logout: () => void;
 }
@@ -32,6 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const logout = useCallback(() => {
     removeToken();
@@ -50,18 +52,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const stored = getToken();
     const storedUser = getUser();
-    if (!stored || !storedUser) return;
+    if (!stored || !storedUser) {
+      setIsLoading(false);
+      return;
+    }
 
     const decoded = decodeToken(stored);
     if (!decoded || isTokenExpired(decoded) || !isAdminRole(decoded)) {
       removeToken();
       removeUser();
+      setIsLoading(false);
       return;
     }
 
     setToken(stored);
     setAuthUser(buildAuthUser(decoded, storedUser));
     setAuthToken(stored);
+    setIsLoading(false);
   }, []);
 
   const login = useCallback(
@@ -83,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <AuthContext.Provider value={{ authUser, token, isAuthenticated: !!token, login, logout }}>
+    <AuthContext.Provider value={{ authUser, token, isAuthenticated: !!token, isLoading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
