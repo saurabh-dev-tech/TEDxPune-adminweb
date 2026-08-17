@@ -1,7 +1,12 @@
 "use client";
 
+import { useState } from "react";
+import { Camera, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { uploadToCloudinary } from "@/lib/cloudinary";
+import { api } from "@/lib/api";
 
 /* Deterministic avatar palette */
 const AVATAR_PALETTE = [
@@ -15,7 +20,9 @@ function avatarColor(name: string) {
 }
 
 export default function SettingsPage() {
-  const { authUser } = useAuth();
+  const { authUser, updateUserProfile } = useAuth();
+  const [uploading, setUploading] = useState(false);
+
   if (!authUser) return null;
 
   const initials = authUser.fullName
@@ -24,6 +31,26 @@ export default function SettingsPage() {
   const roleBadge = authUser.role === "SUPER_ADMIN"
     ? "role-badge role-speaker"   /* red */
     : "role-badge role-organizer"; /* ink */
+
+  async function handleAvatarUpload(file: File) {
+    if (!file) return;
+    setUploading(true);
+    try {
+      toast.info("Uploading new profile picture...");
+      const newAvatarUrl = await uploadToCloudinary(file, "avatars");
+      
+      // Call API to persist avatar_url
+      await api.users.updateProfile(authUser!.sub, { avatar_url: newAvatarUrl });
+      
+      // Update local AuthContext state & localStorage
+      updateUserProfile({ avatarUrl: newAvatarUrl });
+      toast.success("Profile picture updated successfully!");
+    } catch {
+      toast.error("Failed to update profile picture.");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-xl mx-auto">
@@ -45,18 +72,67 @@ export default function SettingsPage() {
         {/* Dark banner */}
         <div className="h-20 bg-ink relative" />
 
-        {/* Avatar overlap */}
+        {/* Avatar overlap & edit button */}
         <div className="px-6 pb-6">
-          <div className="-mt-8 mb-4">
-            <Avatar className="h-16 w-16 border-[3px] border-paper ring-2 ring-red">
-              <AvatarImage src={authUser.avatarUrl ?? undefined} />
-              <AvatarFallback
-                className="text-base font-bold text-paper"
-                style={{ background: avatarColor(authUser.fullName) }}
+          <div className="-mt-8 mb-4 flex items-end gap-3">
+            <div className="relative group">
+              <Avatar className="h-16 w-16 border-[3px] border-paper ring-2 ring-red">
+                <AvatarImage src={authUser.avatarUrl ?? undefined} />
+                <AvatarFallback
+                  className="text-base font-bold text-paper"
+                  style={{ background: avatarColor(authUser.fullName) }}
+                >
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+
+              {/* Upload overlay button */}
+              <label
+                className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Change profile picture"
               >
-                {initials}
-              </AvatarFallback>
-            </Avatar>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAvatarUpload(file);
+                  }}
+                />
+                {uploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-white" />
+                ) : (
+                  <Camera className="h-4 w-4 text-white" />
+                )}
+              </label>
+            </div>
+
+            {/* Change Picture Button */}
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleAvatarUpload(file);
+                }}
+              />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[6px] border border-hairline bg-mist text-[12px] font-medium text-ink hover:bg-mist/80 transition-colors">
+                {uploading ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading…
+                  </>
+                ) : (
+                  <>
+                    <Camera className="h-3.5 w-3.5" /> Change Photo
+                  </>
+                )}
+              </span>
+            </label>
           </div>
 
           <div className="flex items-start justify-between">

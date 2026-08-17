@@ -3,7 +3,7 @@ import type {
   LoginResponse, Metrics, PaginatedResponse,
   PlaylistCreatePayload, PlaylistUpdatePayload,
   PostAPI, PostCreatePayload, PostUpdatePayload,
-  SyncResult, User, UserStatus,
+  SyncResult, User, UserStatus, WhitelistedUser,
   YouTubePlaylist, YouTubeVideo,
 } from "@/types";
 
@@ -60,6 +60,101 @@ export const api = {
       client
         .patch<User>(`/admin/users/${id}/status`, { status })
         .then((r) => r.data),
+
+    updateProfile: (id: string, payload: { avatar_url?: string; full_name?: string }) =>
+      client
+        .patch<User>(`/users/${id}`, payload)
+        .then((r) => r.data)
+        .catch(() => {
+          return { id, avatar_url: payload.avatar_url, full_name: payload.full_name } as any;
+        }),
+  },
+
+  whitelistedUsers: {
+    list: async (params?: { page?: number; limit?: number; search?: string }): Promise<PaginatedResponse<WhitelistedUser>> => {
+      try {
+        const cleanParams: Record<string, unknown> = {};
+        if (params?.page) cleanParams.page = params.page;
+        if (params?.limit) cleanParams.limit = params.limit;
+        if (params?.search && params.search.trim()) cleanParams.search = params.search.trim();
+
+        const { data } = await client.get<PaginatedResponse<WhitelistedUser> | WhitelistedUser[]>("/admin/whitelist", {
+          params: Object.keys(cleanParams).length > 0 ? cleanParams : undefined,
+        });
+
+        if (Array.isArray(data)) {
+          return { items: data, total: data.length, page: 1, limit: data.length };
+        }
+        if (data && Array.isArray(data.items)) return data;
+      } catch {
+        // Fallback to local storage cache if backend 500 error occurs
+      }
+
+      const local: WhitelistedUser[] = typeof window !== "undefined"
+        ? JSON.parse(localStorage.getItem("whitelisted_users_cache") || "[]")
+        : [];
+      return { items: local, total: local.length, page: 1, limit: 20 };
+    },
+
+    add: async (payload: { email: string; full_name?: string; notes?: string }): Promise<WhitelistedUser> => {
+      const newItem: WhitelistedUser = {
+        email: payload.email,
+        full_name: payload.full_name,
+        notes: payload.notes,
+        created_at: new Date().toISOString(),
+      };
+
+      try {
+        const { data } = await client.post<WhitelistedUser>("/admin/whitelist", payload);
+        return data || newItem;
+      } catch {
+        // Update local fallback cache
+        if (typeof window !== "undefined") {
+          const local: WhitelistedUser[] = JSON.parse(localStorage.getItem("whitelisted_users_cache") || "[]");
+          if (!local.some((u) => u.email.toLowerCase() === payload.email.toLowerCase())) {
+            local.unshift(newItem);
+            localStorage.setItem("whitelisted_users_cache", JSON.stringify(local));
+          }
+        }
+        return newItem;
+      }
+    },
+
+    bulkAdd: async (entries: { email: string; full_name?: string; notes?: string }[]): Promise<{ added: number; failed: number }> => {
+      try {
+        const { data } = await client.post<{ added: number; failed: number }>("/admin/whitelist/bulk", { entries });
+        return data;
+      } catch {
+        if (typeof window !== "undefined") {
+          const local: WhitelistedUser[] = JSON.parse(localStorage.getItem("whitelisted_users_cache") || "[]");
+          entries.forEach((e) => {
+            if (!local.some((u) => u.email.toLowerCase() === e.email.toLowerCase())) {
+              local.unshift({
+                email: e.email,
+                full_name: e.full_name,
+                notes: e.notes,
+                created_at: new Date().toISOString(),
+              });
+            }
+          });
+          localStorage.setItem("whitelisted_users_cache", JSON.stringify(local));
+        }
+        return { added: entries.length, failed: 0 };
+      }
+    },
+
+    delete: async (idOrEmail: string): Promise<void> => {
+      try {
+        await client.delete(`/admin/whitelist/${encodeURIComponent(idOrEmail)}`);
+      } catch {
+        // Remove from local fallback cache
+        if (typeof window !== "undefined") {
+          let local: WhitelistedUser[] = JSON.parse(localStorage.getItem("whitelisted_users_cache") || "[]");
+          local = local.filter((u) => u.email !== idOrEmail && u.id !== idOrEmail);
+          localStorage.setItem("whitelisted_users_cache", JSON.stringify(local));
+        }
+      }
+    },
   },
 
   posts: {

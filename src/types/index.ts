@@ -3,6 +3,14 @@ export type UserStatus = "PENDING_APPROVAL" | "ACTIVE" | "BLOCKED";
 export type PostStatus = "ACTIVE" | "DELETED";
 export type SocialProvider = "linkedin" | "google" | "apple";
 
+export interface WhitelistedUser {
+  id?: string;
+  email: string;
+  full_name?: string;
+  notes?: string;
+  created_at?: string;
+}
+
 export interface Tenant {
   id: string;
   name: string;

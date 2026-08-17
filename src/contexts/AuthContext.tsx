@@ -25,6 +25,7 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (accessToken: string, loginUser: LoginUser) => { ok: boolean; error?: string };
   logout: () => void;
+  updateUserProfile: (updates: { avatarUrl?: string; fullName?: string }) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -89,8 +90,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const updateUserProfile = useCallback(
+    (updates: { avatarUrl?: string; fullName?: string }) => {
+      const currentStoredUser = getUser();
+      if (!currentStoredUser) return;
+
+      const updatedUser: LoginUser = {
+        ...currentStoredUser,
+        ...(updates.avatarUrl !== undefined ? { avatarUrl: updates.avatarUrl } : {}),
+        ...(updates.fullName !== undefined ? { fullName: updates.fullName } : {}),
+      };
+
+      saveUser(updatedUser);
+
+      setAuthUser((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          ...(updates.avatarUrl !== undefined ? { avatarUrl: updates.avatarUrl } : {}),
+          ...(updates.fullName !== undefined ? { fullName: updates.fullName } : {}),
+        };
+      });
+    },
+    []
+  );
+
   return (
-    <AuthContext.Provider value={{ authUser, token, isAuthenticated: !!token, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        authUser,
+        token,
+        isAuthenticated: !!token,
+        isLoading,
+        login,
+        logout,
+        updateUserProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

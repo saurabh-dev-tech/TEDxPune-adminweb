@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Loader2, Trash2, Heart, MessageCircle, AlertTriangle,
   RefreshCw, Pencil, Image as ImageIcon, Video, BarChart2,
-  Type, Plus, X, Edit2, Search,
+  Type, Plus, X, Edit2, Search, Upload,
 } from "lucide-react";
 import NextImage from "next/image";
 import { Button } from "@/components/ui/button";
@@ -121,8 +121,19 @@ function PostCard({ post, onEdit, onDelete }: { post: PostAPI; onEdit: (p: PostA
       <div className="p-5 flex flex-col gap-3 flex-1">
         {/* Author */}
         <div className="flex items-start gap-3">
-          <Avatar className="h-8 w-8 shrink-0">
-            <AvatarImage src={post.author?.avatar_url ?? undefined} />
+          <Avatar className="h-8 w-8 shrink-0 overflow-hidden rounded-full">
+            {post.author?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={post.author.avatar_url}
+                alt={name}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  // If image fails to load, replace with fallback
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : null}
             <AvatarFallback className="text-[10px] font-bold text-paper" style={{ background: avatarColor(name) }}>
               {initials}
             </AvatarFallback>
@@ -284,8 +295,33 @@ function ComposeDialog({ open, onClose, onPublished }: {
           {postType === "image" && (
             <div>
               <label className="kicker text-slate mb-1.5 block">Image URL</label>
-              <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://example.com/image.jpg"
-                className="w-full rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+              <div className="flex gap-2">
+                <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://example.com/image.jpg"
+                  className="flex-1 rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        toast.info("Uploading image to Cloudinary...");
+                        const { uploadToCloudinary } = await import("@/lib/cloudinary");
+                        const url = await uploadToCloudinary(file, "posts/images");
+                        setImageUrl(url);
+                        toast.success("Image uploaded to Cloudinary!");
+                      } catch {
+                        toast.error("Cloudinary upload failed.");
+                      }
+                    }}
+                  />
+                  <span className="h-9 px-3 flex items-center gap-1.5 bg-mist border border-hairline hover:bg-mist/80 rounded-[8px] text-[12px] font-medium text-ink transition-colors">
+                    <Upload className="h-3.5 w-3.5" /> Upload
+                  </span>
+                </label>
+              </div>
               {imageUrl && (
                 <div className="mt-2 relative h-32 rounded-[8px] overflow-hidden bg-mist border border-hairline">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -298,8 +334,33 @@ function ComposeDialog({ open, onClose, onPublished }: {
           {postType === "video" && (
             <div>
               <label className="kicker text-slate mb-1.5 block">Video URL</label>
-              <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or direct MP4"
-                className="w-full rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+              <div className="flex gap-2">
+                <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or direct MP4"
+                  className="flex-1 rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        toast.info("Uploading video to Cloudinary...");
+                        const { uploadToCloudinary } = await import("@/lib/cloudinary");
+                        const url = await uploadToCloudinary(file, "posts/videos");
+                        setVideoUrl(url);
+                        toast.success("Video uploaded to Cloudinary!");
+                      } catch {
+                        toast.error("Cloudinary upload failed.");
+                      }
+                    }}
+                  />
+                  <span className="h-9 px-3 flex items-center gap-1.5 bg-mist border border-hairline hover:bg-mist/80 rounded-[8px] text-[12px] font-medium text-ink transition-colors">
+                    <Upload className="h-3.5 w-3.5" /> Upload
+                  </span>
+                </label>
+              </div>
             </div>
           )}
           {postType === "poll" && (
@@ -314,7 +375,7 @@ function ComposeDialog({ open, onClose, onPublished }: {
             </p>
           )}
         </div>
-        <DialogFooter className="px-6 pb-6 pt-2 gap-2 sm:gap-2">
+        <DialogFooter className="px-6 py-4 bg-mist/40 border-t border-hairline rounded-b-[14px] flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={handleClose} disabled={publishing} className="text-[13px] text-slate hover:text-ink hover:bg-mist rounded-[8px]">Discard</Button>
           <Button onClick={handlePublish} disabled={isEmpty || overLimit || !pollValid || publishing}
             className="text-[13px] bg-red hover:bg-red/90 text-paper font-semibold rounded-[8px] min-w-[100px] disabled:opacity-40">
@@ -399,8 +460,33 @@ function EditDialog({ post, onClose, onUpdated }: {
           {post?.post_type === "image" && (
             <div>
               <label className="kicker text-slate mb-1.5 block">Image URL</label>
-              <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://example.com/image.jpg"
-                className="w-full rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+              <div className="flex gap-2">
+                <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://example.com/image.jpg"
+                  className="flex-1 rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        toast.info("Uploading image to Cloudinary...");
+                        const { uploadToCloudinary } = await import("@/lib/cloudinary");
+                        const url = await uploadToCloudinary(file, "posts/images");
+                        setImageUrl(url);
+                        toast.success("Image uploaded to Cloudinary!");
+                      } catch {
+                        toast.error("Cloudinary upload failed.");
+                      }
+                    }}
+                  />
+                  <span className="h-9 px-3 flex items-center gap-1.5 bg-mist border border-hairline hover:bg-mist/80 rounded-[8px] text-[12px] font-medium text-ink transition-colors">
+                    <Upload className="h-3.5 w-3.5" /> Upload
+                  </span>
+                </label>
+              </div>
               {imageUrl && (
                 <div className="mt-2 relative h-32 rounded-[8px] overflow-hidden bg-mist border border-hairline">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -413,8 +499,33 @@ function EditDialog({ post, onClose, onUpdated }: {
           {post?.post_type === "video" && (
             <div>
               <label className="kicker text-slate mb-1.5 block">Video URL</label>
-              <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or direct MP4"
-                className="w-full rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+              <div className="flex gap-2">
+                <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or direct MP4"
+                  className="flex-1 rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
+                <label className="cursor-pointer">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        toast.info("Uploading video to Cloudinary...");
+                        const { uploadToCloudinary } = await import("@/lib/cloudinary");
+                        const url = await uploadToCloudinary(file, "posts/videos");
+                        setVideoUrl(url);
+                        toast.success("Video uploaded to Cloudinary!");
+                      } catch {
+                        toast.error("Cloudinary upload failed.");
+                      }
+                    }}
+                  />
+                  <span className="h-9 px-3 flex items-center gap-1.5 bg-mist border border-hairline hover:bg-mist/80 rounded-[8px] text-[12px] font-medium text-ink transition-colors">
+                    <Upload className="h-3.5 w-3.5" /> Upload
+                  </span>
+                </label>
+              </div>
             </div>
           )}
           {post?.post_type === "poll" && (
@@ -429,7 +540,7 @@ function EditDialog({ post, onClose, onUpdated }: {
             </p>
           )}
         </div>
-        <DialogFooter className="px-6 pb-6 pt-2 gap-2 sm:gap-2">
+        <DialogFooter className="px-6 py-4 bg-mist/40 border-t border-hairline rounded-b-[14px] flex items-center justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={saving} className="text-[13px] text-slate hover:text-ink hover:bg-mist rounded-[8px]">Discard</Button>
           <Button onClick={handleSave} disabled={isEmpty || overLimit || !pollValid || saving}
             className="text-[13px] bg-ink hover:bg-ink/90 text-paper font-semibold rounded-[8px] min-w-[100px] disabled:opacity-40">
@@ -494,7 +605,6 @@ export default function PostsPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <span className="rule-red" />
-          <p className="kicker text-faint mb-1.5">03 / posts</p>
           <h1 className="text-[28px] leading-[1.0] tracking-[-0.6px] text-ink" style={{ fontFamily: "var(--font-instrument-serif), Georgia, serif" }}>Post Moderation</h1>
           <p className="text-[13px] text-slate mt-1">Review, edit, remove or publish content to the community feed.</p>
         </div>
