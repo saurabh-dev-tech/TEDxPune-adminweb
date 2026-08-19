@@ -2,7 +2,7 @@ import axios, { AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import type {
   LoginResponse, Metrics, PaginatedResponse,
   PlaylistCreatePayload, PlaylistUpdatePayload,
-  PostAPI, PostCreatePayload, PostUpdatePayload,
+  PollVoter, PollVotesResponse, PostAPI, PostCreatePayload, PostLikesResponse, PostUpdatePayload,
   SyncResult, User, UserStatus, WhitelistedUser,
   YouTubePlaylist, YouTubeVideo,
 } from "@/types";
@@ -184,6 +184,18 @@ export const api = {
 
     /** DELETE /api/v1/admin/posts/:id — hard delete */
     delete: (id: string) => client.delete(`/admin/posts/${id}`),
+
+    /** GET poll vote details for a post */
+    getPollVotes: async (postId: string): Promise<PollVotesResponse> => {
+      const { data } = await client.get<PollVotesResponse>(`/admin/posts/${postId}/poll-votes`);
+      return data;
+    },
+
+    /** GET /admin/posts/:id/likes — fetch users who liked the post */
+    getLikes: async (postId: string): Promise<PostLikesResponse> => {
+      const { data } = await client.get<PostLikesResponse>(`/admin/posts/${postId}/likes`);
+      return data;
+    },
   },
 
   videos: {

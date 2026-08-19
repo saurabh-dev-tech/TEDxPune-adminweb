@@ -68,15 +68,72 @@ export interface PostAPI {
   author?: PostAuthor;
   kudos_count?: number;
   poll_options?: PollOption[];
+  options?: PollOption[];
+  pollOptions?: PollOption[];
+  poll?: {
+    id?: string;
+    options?: PollOption[];
+  };
 }
 
 export type PostType = 'text' | 'image' | 'video' | 'poll';
+
+export interface PollVoter {
+  id: string;
+  full_name: string;
+  email?: string;
+  avatar_url?: string | null;
+  headline?: string | null;
+  voted_at?: string;
+}
+
+export interface PollVoteRecord {
+  id: string;
+  created_at: string;
+  option_id: string;
+  option_text: string;
+  user: {
+    id: string;
+    full_name: string;
+    email: string;
+    avatar_url: string | null;
+    headline?: string | null;
+  };
+}
+
+export interface PollVotesResponse {
+  post_id: string;
+  post_body: string;
+  total_votes: number;
+  options: PollOption[];
+  votes: PollVoteRecord[];
+}
+
+export interface PostLikeRecord {
+  id: string;
+  created_at: string;
+  user: {
+    id: string;
+    full_name: string;
+    email: string;
+    avatar_url: string | null;
+    headline?: string | null;
+  };
+}
+
+export interface PostLikesResponse {
+  post_id: string;
+  total_likes: number;
+  likes: PostLikeRecord[];
+}
 
 export interface PollOption {
   id: string;
   option_text: string;
   sort_order: number;
   vote_count: number;
+  voters?: PollVoter[];
+  votes?: { id?: string; created_at?: string; user?: PollVoter; full_name?: string; avatar_url?: string; email?: string }[];
 }
 
 /** Payload for POST /api/v1/posts */

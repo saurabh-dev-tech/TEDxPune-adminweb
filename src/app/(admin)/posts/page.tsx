@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Loader2, Trash2, Heart, MessageCircle, AlertTriangle,
   RefreshCw, Pencil, Image as ImageIcon, Video, BarChart2,
-  Type, Plus, X, Edit2, Search, Upload,
+  Type, Plus, X, Edit2, Search, Upload, Users,
 } from "lucide-react";
 import NextImage from "next/image";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { api } from "@/lib/api";
 import { formatDistanceToNow } from "@/lib/utils";
-import type { PostAPI, PostCreatePayload, PostType, PostUpdatePayload } from "@/types";
+import type { PostAPI, PostCreatePayload, PostType, PostUpdatePayload, PollOption, PollVoter, PollVoteRecord, PollVotesResponse, PostLikeRecord, PostLikesResponse } from "@/types";
 
 const MAX_BODY = 3000;
 
@@ -31,6 +31,48 @@ function avatarColor(name: string) {
   return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
 }
 
+function extractVoters(opt: PollOption, topLevelVotes?: PollVoteRecord[]): PollVoter[] {
+  // 1. Check top-level votes array from /admin/posts/:id/poll-votes
+  if (Array.isArray(topLevelVotes) && topLevelVotes.length > 0) {
+    const matching = topLevelVotes.filter((v) => v.option_id === opt.id);
+    if (matching.length > 0) {
+      return matching.map((v) => ({
+        id: v.user?.id || v.id,
+        full_name: v.user?.full_name || "Anonymous User",
+        email: v.user?.email,
+        avatar_url: v.user?.avatar_url,
+        headline: v.user?.headline,
+        voted_at: v.created_at,
+      }));
+    }
+  }
+
+  // 2. Check direct opt.voters
+  if (Array.isArray(opt.voters) && opt.voters.length > 0) {
+    return opt.voters;
+  }
+
+  // 3. Check direct opt.votes
+  if (Array.isArray(opt.votes) && opt.votes.length > 0) {
+    return opt.votes.map((v, idx) => ({
+      id: v.id || v.user?.id || `voter-${idx}`,
+      full_name: v.user?.full_name || v.full_name || "Anonymous User",
+      email: v.user?.email || v.email,
+      avatar_url: v.user?.avatar_url || v.avatar_url,
+      headline: v.user?.headline,
+      voted_at: v.created_at,
+    }));
+  }
+
+  return [];
+}
+
+function getPollOptions(post?: PostAPI | null): PollOption[] {
+  if (!post) return [];
+  const opts = post.poll_options || post.options || post.pollOptions || post.poll?.options;
+  return Array.isArray(opts) ? opts : [];
+}
+
 function extractYoutubeId(url: string): string | null {
   const match =
     url.match(/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/) ||
@@ -38,6 +80,39 @@ function extractYoutubeId(url: string): string | null {
     url.match(/youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/) ||
     url.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/);
   return match ? match[1] : null;
+}
+
+function VideoPlayer({ url, className }: { url: string; className?: string }) {
+  if (!url) return null;
+  const ytId = extractYoutubeId(url);
+  if (ytId) {
+    return (
+      <div className={`relative aspect-video w-full rounded-[8px] overflow-hidden bg-black border border-hairline ${className ?? ""}`}>
+        <iframe
+          src={`https://www.youtube.com/embed/${ytId}`}
+          title="YouTube video player"
+          frameBorder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          className="absolute inset-0 w-full h-full"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`relative aspect-video w-full rounded-[8px] overflow-hidden bg-black border border-hairline ${className ?? ""}`}>
+      <video
+        src={url}
+        controls
+        playsInline
+        preload="metadata"
+        className="w-full h-full object-contain"
+      >
+        Your browser does not support playing this video format.
+      </video>
+    </div>
+  );
 }
 
 const POST_TYPE_META: Record<PostType, { label: string; icon: React.ReactNode; accent: string }> = {
@@ -109,8 +184,270 @@ function PollOptionList({ options, onUpdate, onAdd, onRemove }: {
   );
 }
 
+/* Poll Voters Details Dialog */
+function PollVotersModal({
+  post,
+  onClose,
+}: {
+  post: PostAPI | null;
+  onClose: () => void;
+}) {
+  const [activeTab, setActiveTab] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [votesResponse, setVotesResponse] = useState<PollVotesResponse | null>(null);
+
+  useEffect(() => {
+    if (post) {
+      setVotesResponse(null);
+      const initialOpts = getPollOptions(post);
+      if (initialOpts.length > 0) {
+        setActiveTab(initialOpts[0].id);
+      }
+      setLoading(true);
+      api.posts
+        .getPollVotes(post.id)
+        .then((res) => {
+          if (res) {
+            setVotesResponse(res);
+            if (res.options && res.options.length > 0) {
+              setActiveTab((prev) => (prev ? prev : res.options[0].id));
+            }
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+  }, [post]);
+
+  if (!post || post.post_type !== "poll") return null;
+
+  const options = votesResponse?.options || getPollOptions(post);
+  const selectedOption = options.find((o) => o.id === activeTab) || options[0];
+  const voters = selectedOption ? extractVoters(selectedOption, votesResponse?.votes) : [];
+  const totalVotes = votesResponse?.total_votes ?? options.reduce((s, o) => s + (o.vote_count ?? 0), 0);
+  const postBody = votesResponse?.post_body || post.body;
+
+  return (
+    <Dialog open={!!post} onOpenChange={onClose}>
+      <DialogContent className="bg-paper border-hairline shadow-none rounded-[14px] max-w-lg w-full p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-3 border-b border-hairline bg-mist/30">
+          <div className="flex items-center gap-2">
+            <BarChart2 className="h-5 w-5 text-amber-500 stroke-[1.8]" />
+            <DialogTitle
+              className="text-[20px] leading-[1.1] text-ink font-normal"
+              style={{ fontFamily: "var(--font-instrument-serif), Georgia, serif" }}
+            >
+              Poll Results & Voter Details
+            </DialogTitle>
+          </div>
+          <DialogDescription className="text-[13px] text-ink font-medium mt-1.5 line-clamp-2">
+            "{postBody}"
+          </DialogDescription>
+          <p className="kicker text-faint mt-1">{totalVotes.toLocaleString("en-IN")} total votes recorded</p>
+        </DialogHeader>
+
+        {/* Option Tabs */}
+        <div className="flex border-b border-hairline bg-mist/50 overflow-x-auto px-4 pt-2 gap-1.5">
+          {options.map((opt) => {
+            const pct = totalVotes > 0 ? Math.round(((opt.vote_count ?? 0) / totalVotes) * 100) : 0;
+            const isSelected = selectedOption?.id === opt.id;
+            return (
+              <button
+                key={opt.id || opt.option_text}
+                onClick={() => setActiveTab(opt.id)}
+                className={`px-3 py-2 text-[12px] font-medium rounded-t-[8px] transition-all border-b-2 whitespace-nowrap flex items-center gap-2 ${
+                  isSelected
+                    ? "border-amber-500 text-ink bg-paper shadow-sm"
+                    : "border-transparent text-slate hover:text-ink hover:bg-mist/80"
+                }`}
+              >
+                <span>{opt.option_text}</span>
+                <span className={`kicker px-1.5 py-0.5 rounded text-[10px] ${isSelected ? "bg-amber-100 text-amber-800" : "bg-mist text-faint"}`}>
+                  {opt.vote_count ?? 0} ({pct}%)
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Voter List */}
+        <div className="p-6 max-h-[360px] overflow-y-auto space-y-2.5">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-faint" />
+            </div>
+          ) : voters.length === 0 ? (
+            <div className="text-center py-10 text-faint space-y-1.5">
+              <Users className="h-7 w-7 mx-auto stroke-[1.4] text-slate/40" />
+              <p className="text-[13px] font-semibold text-ink">No voter profiles found for this option</p>
+              <p className="text-[11.5px] text-slate max-w-xs mx-auto">
+                {selectedOption?.vote_count
+                  ? `${selectedOption.vote_count} vote(s) recorded in total.`
+                  : "No votes submitted for this option yet."}
+              </p>
+            </div>
+          ) : (
+            voters.map((voter, idx) => {
+              const name = voter.full_name || "Anonymous User";
+              const initials = name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+              return (
+                <div key={voter.id || idx} className="flex items-center gap-3 p-3 rounded-[8px] border border-hairline bg-mist/30 hover:bg-mist/70 transition-colors">
+                  <Avatar className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-hairline">
+                    {voter.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={voter.avatar_url} alt={name} className="h-full w-full object-cover" />
+                    ) : null}
+                    <AvatarFallback className="text-[11px] font-bold text-paper" style={{ background: avatarColor(name) }}>
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13.5px] font-semibold text-ink leading-tight truncate">{name}</p>
+                    {voter.headline && <p className="text-[11px] text-slate truncate mt-0.5">{voter.headline}</p>}
+                    {voter.email && <p className="text-[11px] text-faint truncate">{voter.email}</p>}
+                  </div>
+                  <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 shrink-0 flex items-center gap-1">
+                    Selected
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <DialogFooter className="px-6 py-3 bg-mist/40 border-t border-hairline flex items-center justify-end">
+          <Button variant="ghost" size="sm" onClick={onClose} className="text-[12px] text-slate hover:text-ink rounded-[6px]">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* Post Likes Details Dialog */
+function PostLikesModal({
+  post,
+  onClose,
+}: {
+  post: PostAPI | null;
+  onClose: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [likesData, setLikesData] = useState<PostLikesResponse | null>(null);
+
+  useEffect(() => {
+    if (post) {
+      setLikesData(null);
+      setLoading(true);
+      api.posts
+        .getLikes(post.id)
+        .then((res) => {
+          if (res) {
+            setLikesData(res);
+          }
+        })
+        .catch(() => {
+          toast.error("Failed to load post likes.");
+        })
+        .finally(() => setLoading(false));
+    }
+  }, [post]);
+
+  if (!post) return null;
+
+  const totalLikes = likesData?.total_likes ?? post.kudos_count ?? 0;
+  const likesList = likesData?.likes || [];
+
+  return (
+    <Dialog open={!!post} onOpenChange={onClose}>
+      <DialogContent className="bg-paper border-hairline shadow-none rounded-[14px] max-w-lg w-full p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-3 border-b border-hairline bg-mist/30">
+          <div className="flex items-center gap-2">
+            <Heart className="h-5 w-5 text-red fill-red/20 stroke-[1.8]" />
+            <DialogTitle
+              className="text-[20px] leading-[1.1] text-ink font-normal"
+              style={{ fontFamily: "var(--font-instrument-serif), Georgia, serif" }}
+            >
+              Post Likes & Kudos
+            </DialogTitle>
+          </div>
+          <DialogDescription className="text-[13px] text-ink font-medium mt-1.5 line-clamp-2">
+            "{post.body}"
+          </DialogDescription>
+          <p className="kicker text-faint mt-1">{totalLikes.toLocaleString("en-IN")} total likes received</p>
+        </DialogHeader>
+
+        {/* Likers List */}
+        <div className="p-6 max-h-[380px] overflow-y-auto space-y-2.5">
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-5 w-5 animate-spin text-faint" />
+            </div>
+          ) : likesList.length === 0 ? (
+            <div className="text-center py-10 text-faint space-y-1.5">
+              <Heart className="h-7 w-7 mx-auto stroke-[1.4] text-slate/40" />
+              <p className="text-[13px] font-semibold text-ink">No likes recorded yet</p>
+              <p className="text-[11.5px] text-slate max-w-xs mx-auto">
+                {totalLikes > 0
+                  ? `${totalLikes} like(s) recorded.`
+                  : "Be the first to show appreciation on this post!"}
+              </p>
+            </div>
+          ) : (
+            likesList.map((likeRecord) => {
+              const u = likeRecord.user;
+              const name = u?.full_name || "Anonymous User";
+              const initials = name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
+              return (
+                <div key={likeRecord.id} className="flex items-center gap-3 p-3 rounded-[8px] border border-hairline bg-mist/30 hover:bg-mist/70 transition-colors">
+                  <Avatar className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-hairline">
+                    {u?.avatar_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={u.avatar_url} alt={name} className="h-full w-full object-cover" />
+                    ) : null}
+                    <AvatarFallback className="text-[11px] font-bold text-paper" style={{ background: avatarColor(name) }}>
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13.5px] font-semibold text-ink leading-tight truncate">{name}</p>
+                    {u?.headline && <p className="text-[11px] text-slate truncate mt-0.5">{u.headline}</p>}
+                    {u?.email && <p className="text-[11px] text-faint truncate">{u.email}</p>}
+                  </div>
+                  <span className="text-[11px] font-medium text-red bg-red-soft px-2.5 py-1 rounded-full border border-red/20 shrink-0 flex items-center gap-1">
+                    <Heart className="h-3 w-3 text-red fill-red stroke-[1.6]" /> Liked
+                  </span>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        <DialogFooter className="px-6 py-3 bg-mist/40 border-t border-hairline flex items-center justify-end">
+          <Button variant="ghost" size="sm" onClick={onClose} className="text-[12px] text-slate hover:text-ink rounded-[6px]">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /* Post card */
-function PostCard({ post, onEdit, onDelete }: { post: PostAPI; onEdit: (p: PostAPI) => void; onDelete: (id: string) => void }) {
+function PostCard({
+  post,
+  onEdit,
+  onDelete,
+  onViewPollVoters,
+  onViewLikes,
+}: {
+  post: PostAPI;
+  onEdit: (p: PostAPI) => void;
+  onDelete: (id: string) => void;
+  onViewPollVoters?: (p: PostAPI) => void;
+  onViewLikes?: (p: PostAPI) => void;
+}) {
   const name = post.author?.full_name ?? "Unknown";
   const initials = name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
   const meta = POST_TYPE_META[post.post_type ?? "text"];
@@ -157,60 +494,92 @@ function PostCard({ post, onEdit, onDelete }: { post: PostAPI; onEdit: (p: PostA
         )}
 
         {/* Video preview */}
-        {post.post_type === "video" && post.video_url && (() => {
-          const ytId = extractYoutubeId(post.video_url);
-          if (ytId) {
-            return (
-              <div className="relative aspect-video w-full rounded-[8px] overflow-hidden bg-black border border-hairline">
-                <iframe
-                  src={`https://www.youtube.com/embed/${ytId}`}
-                  title="YouTube video player"
-                  frameBorder="0"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  className="absolute inset-0 w-full h-full"
-                />
-              </div>
-            );
-          }
+        {post.post_type === "video" && post.video_url && (
+          <VideoPlayer url={post.video_url} />
+        )}
+
+        {/* Poll preview */}
+        {post.post_type === "poll" && (() => {
+          const options = getPollOptions(post);
+          const totalVotes = options.reduce((s, o) => s + (o.vote_count ?? 0), 0);
           return (
-            <div className="flex items-center gap-2.5 rounded-[8px] bg-mist border border-hairline px-3 py-2.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-purple-100">
-                <Video className="h-3.5 w-3.5 text-purple-500 stroke-[1.6]" />
+            <div className="space-y-2">
+              {options.length > 0 ? (
+                <div className="space-y-1.5">
+                  {options.map((opt) => {
+                    const pct = totalVotes > 0 ? Math.round(((opt.vote_count ?? 0) / totalVotes) * 100) : 0;
+                    const voters = extractVoters(opt);
+                    return (
+                      <div
+                        key={opt.id || opt.option_text}
+                        onClick={() => onViewPollVoters?.(post)}
+                        className="group/opt relative rounded-[6px] border border-hairline bg-mist overflow-hidden cursor-pointer hover:border-amber-400/60 transition-colors"
+                      >
+                        <div className="absolute inset-y-0 left-0 bg-amber-100/80 transition-all" style={{ width: `${pct}%` }} />
+                        <div className="relative flex flex-col px-3 py-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[12px] font-medium text-ink">{opt.option_text}</span>
+                            <span className="kicker text-faint tabular shrink-0 ml-2">{pct}% ({opt.vote_count ?? 0})</span>
+                          </div>
+                          {voters.length > 0 && (
+                            <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-hairline/60">
+                              <div className="flex -space-x-1.5 overflow-hidden">
+                                {voters.slice(0, 4).map((voter, idx) => {
+                                  const vName = voter.full_name || "Voter";
+                                  const vInitials = vName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+                                  return (
+                                    <Avatar key={voter.id || idx} className="h-4 w-4 border border-paper shrink-0" title={`${vName}${voter.email ? ` (${voter.email})` : ''}`}>
+                                      {voter.avatar_url ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={voter.avatar_url} alt={vName} className="h-full w-full object-cover" />
+                                      ) : null}
+                                      <AvatarFallback className="text-[7px] font-bold text-paper" style={{ background: avatarColor(vName) }}>
+                                        {vInitials}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                  );
+                                })}
+                              </div>
+                              <span className="text-[10px] text-slate truncate">
+                                {voters.slice(0, 2).map((v) => v.full_name).join(", ")}
+                                {voters.length > 2 ? ` +${voters.length - 2} more` : ""}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <div className="flex items-center justify-between pt-1">
+                <p className="kicker text-faint">
+                  {totalVotes.toLocaleString("en-IN")} total votes
+                </p>
+                <button
+                  type="button"
+                  onClick={() => onViewPollVoters?.(post)}
+                  className="flex items-center gap-1 text-[11px] font-semibold text-amber-600 hover:text-amber-700 hover:underline transition-colors"
+                >
+                  <Users className="h-3 w-3 stroke-[1.8]" /> View voter details
+                </button>
               </div>
-              <span className="text-[12px] text-slate truncate flex-1">{post.video_url}</span>
             </div>
           );
         })()}
 
-        {/* Poll preview */}
-        {post.post_type === "poll" && post.poll_options && post.poll_options.length > 0 && (
-          <div className="space-y-1.5">
-            {post.poll_options.map((opt) => {
-              const totalVotes = post.poll_options!.reduce((s, o) => s + (o.vote_count ?? 0), 0);
-              const pct = totalVotes > 0 ? Math.round(((opt.vote_count ?? 0) / totalVotes) * 100) : 0;
-              return (
-                <div key={opt.id} className="relative rounded-[6px] border border-hairline bg-mist overflow-hidden">
-                  <div className="absolute inset-y-0 left-0 bg-amber-100 transition-all" style={{ width: `${pct}%` }} />
-                  <div className="relative flex items-center justify-between px-3 py-2">
-                    <span className="text-[12px] text-ink">{opt.option_text}</span>
-                    <span className="kicker text-faint tabular shrink-0 ml-2">{pct}%</span>
-                  </div>
-                </div>
-              );
-            })}
-            <p className="kicker text-faint">
-              {post.poll_options.reduce((s, o) => s + (o.vote_count ?? 0), 0).toLocaleString("en-IN")} votes
-            </p>
-          </div>
-        )}
-
         {/* Footer */}
         <div className="flex items-center justify-between pt-2 border-t border-hairline">
-          <span className="flex items-center gap-1.5 kicker text-faint tabular">
-            <Heart className="h-3 w-3 text-red stroke-[1.6]" />
-            {post.kudos_count ?? 0}
-          </span>
+          <button
+            type="button"
+            onClick={() => onViewLikes?.(post)}
+            className="flex items-center gap-1.5 kicker text-faint hover:text-red transition-colors group/likes py-1 px-1.5 rounded-md hover:bg-red-soft/50"
+            title="Click to view users who liked this post"
+          >
+            <Heart className="h-3.5 w-3.5 text-red fill-red/20 group-hover/likes:fill-red stroke-[1.6] transition-colors" />
+            <span className="font-semibold text-[12px] text-ink">{post.kudos_count ?? 0}</span>
+            <span className="text-[11px]">likes</span>
+          </button>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <Button size="sm" variant="ghost" onClick={() => onEdit(post)}
               className="h-7 px-2 text-[11px] font-medium text-slate hover:text-ink hover:bg-mist rounded-md">
@@ -332,19 +701,23 @@ function ComposeDialog({ open, onClose, onPublished }: {
             </div>
           )}
           {postType === "video" && (
-            <div>
-              <label className="kicker text-slate mb-1.5 block">Video URL</label>
+            <div className="space-y-2">
+              <label className="kicker text-slate mb-1.5 block">Video URL or File Upload</label>
               <div className="flex gap-2">
                 <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or direct MP4"
                   className="flex-1 rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    accept="video/*"
+                    accept="video/*,video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi,.wmv,.flv,.m4v"
                     className="hidden"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      if (!file.type.startsWith("video/") && !/\.(mp4|mov|webm|mkv|avi|wmv|flv|m4v)$/i.test(file.name)) {
+                        toast.error("Please select a valid video file.");
+                        return;
+                      }
                       try {
                         toast.info("Uploading video to Cloudinary...");
                         const { uploadToCloudinary } = await import("@/lib/cloudinary");
@@ -361,6 +734,21 @@ function ComposeDialog({ open, onClose, onPublished }: {
                   </span>
                 </label>
               </div>
+              {videoUrl && (
+                <div className="relative mt-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="kicker text-slate">Video Preview</span>
+                    <button
+                      type="button"
+                      onClick={() => setVideoUrl("")}
+                      className="text-[11px] text-slate hover:text-red transition-colors flex items-center gap-1"
+                    >
+                      <X className="h-3 w-3" /> Clear video
+                    </button>
+                  </div>
+                  <VideoPlayer url={videoUrl} />
+                </div>
+              )}
             </div>
           )}
           {postType === "poll" && (
@@ -497,19 +885,23 @@ function EditDialog({ post, onClose, onUpdated }: {
             </div>
           )}
           {post?.post_type === "video" && (
-            <div>
-              <label className="kicker text-slate mb-1.5 block">Video URL</label>
+            <div className="space-y-2">
+              <label className="kicker text-slate mb-1.5 block">Video URL or File Upload</label>
               <div className="flex gap-2">
                 <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://youtube.com/watch?v=… or direct MP4"
                   className="flex-1 rounded-[8px] border border-hairline bg-mist/50 px-3 py-2 text-[13px] text-ink placeholder:text-faint outline-none focus:border-slate/40 focus:bg-paper transition-colors" />
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    accept="video/*"
+                    accept="video/*,video/mp4,video/webm,video/ogg,video/quicktime,video/x-matroska,.mp4,.mov,.webm,.mkv,.avi,.wmv,.flv,.m4v"
                     className="hidden"
                     onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      if (!file.type.startsWith("video/") && !/\.(mp4|mov|webm|mkv|avi|wmv|flv|m4v)$/i.test(file.name)) {
+                        toast.error("Please select a valid video file.");
+                        return;
+                      }
                       try {
                         toast.info("Uploading video to Cloudinary...");
                         const { uploadToCloudinary } = await import("@/lib/cloudinary");
@@ -526,6 +918,21 @@ function EditDialog({ post, onClose, onUpdated }: {
                   </span>
                 </label>
               </div>
+              {videoUrl && (
+                <div className="relative mt-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="kicker text-slate">Video Preview</span>
+                    <button
+                      type="button"
+                      onClick={() => setVideoUrl("")}
+                      className="text-[11px] text-slate hover:text-red transition-colors flex items-center gap-1"
+                    >
+                      <X className="h-3 w-3" /> Clear video
+                    </button>
+                  </div>
+                  <VideoPlayer url={videoUrl} />
+                </div>
+              )}
             </div>
           )}
           {post?.post_type === "poll" && (
@@ -564,6 +971,8 @@ export default function PostsPage() {
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
   const [editPost, setEditPost] = useState<PostAPI | null>(null);
+  const [pollPost, setPollPost] = useState<PostAPI | null>(null);
+  const [likePost, setLikePost] = useState<PostAPI | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -649,7 +1058,9 @@ export default function PostsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {posts.map((post) => <PostCard key={post.id} post={post} onEdit={setEditPost} onDelete={setConfirmId} />)}
+          {posts.map((post) => (
+            <PostCard key={post.id} post={post} onEdit={setEditPost} onDelete={setConfirmId} onViewPollVoters={setPollPost} onViewLikes={setLikePost} />
+          ))}
         </div>
       )}
 
@@ -667,6 +1078,8 @@ export default function PostsPage() {
 
       <ComposeDialog open={composing} onClose={() => setComposing(false)} onPublished={handlePublished} />
       <EditDialog post={editPost} onClose={() => setEditPost(null)} onUpdated={handleUpdated} />
+      <PollVotersModal post={pollPost} onClose={() => setPollPost(null)} />
+      <PostLikesModal post={likePost} onClose={() => setLikePost(null)} />
 
       <Dialog open={!!confirmId} onOpenChange={() => setConfirmId(null)}>
         <DialogContent className="bg-paper border-hairline shadow-none max-w-sm rounded-[14px]">
